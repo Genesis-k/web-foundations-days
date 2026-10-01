@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUICKNOTES - About</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+        <header>
+        <h1>Quicknotes</h1>
+        <p>Capture ideas before they disappear.</p>
+
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="about.html">About</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section>
+            <h2>About Quicknotes</h2>
+            <p>Quicknotes is a simple web application that allows users to quickly capture and save their ideas before they disappear. It is designed to be user-friendly and accessible on various devices.</p>
+        </section>
+
+        <section>
+            <h2>How to use Quicknotes</h2>
+            <ol>
+                <li>Click the "New Note" button to create a new note.</li>
+                <li>Enter your idea in the text area.</li>
+                <li>Click "Save" to store your note.</li>
+            </ol>
+        </section>
+
+        <section class="features">
+            <h2>Features</h2>
+            <ul>
+                <li>Quick and easy note creation</li>
+                <li>Responsive design for all devices</li>
+                <li>Simple and intuitive user interface</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>Keyboard Shortcuts</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Shortcut</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                    <tbody>
+                        <tr>
+                            <td><kbd>Ctrl + S</kbd></td>
+                            <td>Save current note</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl + N</kbd></td>
+                            <td>Create new note</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl + D</kbd></td>
+                            <td>Delete current note</td>
+                        </tr>
+                    </tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>Send Feedback</h2>
+            <p>We'd love to hear your thoughts and suggestions! Please feel free to contact us at feedback@quicknotes.com.</p>
+
+            <form action="#" method="post">
+                <div>
+                    <label for="user-name">Name:</label>
+                    <input type="text" id="user-name" name="name" required>
+                </div>
+                <div>
+                    <label for="user-email">Email:</label>
+                    <input type="email" id="user-email" name="email" required>
+                </div>
+                <div>
+                    <label for="feedback-category">Topic:</label>
+                    <select id="feedback-category" name="feedbackCategory">
+                        <option value="bug-report">Report a bug</option>
+                        <option value="feature-request">Feature Request</option>
+                        <option value="general-feedback">General Feedback</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="user-message">Your feedback:</label>
+                    <textarea id="user-message" name="userMessage" rows="5" required></textarea>
+                </div>
+                <button type="submit">Send Feedback</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>Copyright &copy; 2026 Quicknotes</p>
+    </footer>
+</body>
+</html>
