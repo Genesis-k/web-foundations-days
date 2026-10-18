@@ -1,48 +1,62 @@
-# School Database System Design
+# SnapShare - Scaling Plan
 
-A relational database design for managing academic enrollments, student profiles, and course catalogs.
+## Assumptions
+- 10,000,000 registered users, 10% active daily = 1,000,000 DAU.
+- Each active user uploads 1 photo and views 50 feed pages per day.
+- Photo: 2 MB. Thumbnail: 50 KB. 1 day ≈ 100,000 seconds. Peak = 5x average.
 
----
+## Estimates
+- Uploads: 1,000,000/day ÷ 100,000 = about 10 per second (peak ≈ 50/s).
+- Feed views: 50,000,000/day ÷ 100,000 = about 500 per second (peak ≈ 2,500/s).
+- Storage: 1,000,000 × 2.05 MB ≈ 2 TB/day ≈ 750 TB/year.
 
-## 1. Table Explanations
+## Read-heavy or write-heavy?
+Very read-heavy: about 50 feed views for every upload. We should make reads cheap (CDN for images, cache for feeds, read replicas) and keep uploads reliable rather than instant.
 
-* **`students`**: Stores identity and profile data for registered learners. Each record represents an individual student identified uniquely by `student_id`, alongside required attributes (`name`) and a strictly unique identifier (`email`).
-* **`courses`**: Holds catalog listings of academic units offered by the institution. Each row contains an auto-incrementing `course_id`, an institutional alphanumeric unit identifier (`code`), and the descriptive `title`.
-* **`enrolments`**: Acts as the junction table bridging learners and courses. It stores contextual transaction attributes that only exist when a student takes a class—specifically the earned `grade`—while linking to the primary keys of both parent entities.
+## Where do the photos go?
+Photos must NOT be stored in the database. 750 TB/year of large binary files would make the database huge, slow and expensive to back up. Photo files go into object storage (such as Amazon S3), which is built for cheap, durable storage of large files. The database stores only each photo's metadata: id, owner, caption, time and the file's URL.
 
----
+## Architecture
 
-## 2. Entity Relationships & Join Table Mechanics
-
-### Relationship Cardinality
-* **One-to-Many (`1:N`) Relationships**: 
-  * `students` to `enrolments`: One student can possess zero, one, or many enrolment entries.
-  * `courses` to `enrolments`: One course can have zero, one, or many enrolled students.
-* **Many-to-Many (`M:N`) Relationship**: 
-  * `students` to `courses`: A student may register for multiple courses across a semester, and a single course is concurrently attended by multiple students.
-
-### Why a Join Table is Required
-Relational databases cannot cleanly model an arbitrary many-to-many relationship directly inside flat columns without violating First Normal Form (1NF). Placing a list or array of course IDs inside a single `students` column prevents indexing, breaks atomic value constraints, and complicates join queries. Conversely, duplicating student details for every enrolled course causes severe data redundancy and update anomalies. 
-
-The `enrolments` join table decomposes the `M:N` relationship into two manageable `1:N` relationships, providing a single source of truth and enabling composite uniqueness checks via `UNIQUE(student_id, course_id)`.
-
----
-
-## 3. Recommended Index & Rationale
-
-```sql
-CREATE INDEX idx_enrolments_course_id ON enrolments(course_id);
+```text
+    Mobile app / browser
+       │   photo files and thumbnails
+       ├──────────────────────────────> CDN ──> Object storage
+       │   API calls (HTTPS, JSON)              (photo files)
+       v                                             ^
+    Load balancer                                    │ uploads
+       │                                             │
+       ├──> App server 1 ──┐                         │
+       ├──> App server 2 ──┼──> Cache (Redis): feeds │
+       └──> App server 3 ──┘                         │
+               │      │                              │
+               │      └──> Queue ──> Thumbnail worker┘
+               v
+    Primary DB ──replicates──> Read replicas
+    (metadata)                 (feed queries)
 ```
 
-### Rationale for Indexing `course_id`:
-1. **Foreign Keys Lack Automatic Indexes**: In relational database management systems (including SQLite, PostgreSQL, and MySQL), defining a column as a `FOREIGN KEY` does **not** automatically create an underlying B-tree index for it. Only the table's `PRIMARY KEY` (`enrolment_id`) receives an automatic index.
-2. **Preventing Full Table Scans on Reverse Lookups**: The junction table will naturally be queried in two directions: looking up a student's courses and looking up a course's enrolled students. Without an index on `course_id`, any query that filters by course (e.g., retrieving all students enrolled in "Introduction to Computer Science") or joins `courses` to `enrolments` must perform an expensive, sequential full table scan across every single record in the `enrolments` table.
-3. **Optimizing Grouping and Aggregation**: Analytical queries like calculating class sizes (`COUNT(student_id) ... GROUP BY course_id`) or computing course grade distributions require scanning `enrolments` by course. Adding this index reduces the search and join complexity from linear $O(N)$ time to logarithmic $O(\log N)$ time, preventing database bottlenecks as enrollment numbers scale into tens of thousands of rows.
+## Components
+- CDN: serves photos from servers near users, so images load fast and our servers are not overloaded by 2,500 feed views per second.
+- Object storage: cheap, durable home for hundreds of terabytes of files.
+- Load balancer: spreads API traffic and removes failed servers.
+- App servers (stateless): handle API requests; add more as traffic grows.
+- Cache: keeps each user's prepared feed in memory for fast scrolling.
+- Primary database: the source of truth for users, follows and photo metadata.
+- Read replicas: handle the heavy feed queries, protecting the primary.
+- Queue + thumbnail worker: creates thumbnails in the background so the upload request can finish quickly.
 
----
+## Upload flow
+1. The app sends the photo to an app server through the load balancer.
+2. The app server checks the user's token and the file type and size.
+3. It saves the original file to object storage.
+4. It inserts a row with the photo's metadata into the primary database.
+5. It adds a job "make thumbnail for photo 123" to the queue.
+6. It replies 201 Created to the user straight away.
+7. A worker takes the job, creates the 50 KB thumbnail, saves it to object storage and updates the photo's row with the thumbnail URL.
+8. The followers' cached feeds are invalidated so the photo appears.
 
-## 4. Architectural Choice: SQL vs. NoSQL
-
-For an academic management system, **SQL (Relational Database)** is distinctly the superior architecture over NoSQL. Academic records demand strict referential integrity, strong schema enforcement, and ACID transaction guarantees: operations such as registering for classes, capping class enrollments, and recording final grades cannot tolerate eventual consistency, orphaned records, or silent data duplication. If course titles, student names, or unit codes update, relational normalization guarantees that the change is reflected across all queries instantly without risk of stale data. 
-
-In contrast, a document-oriented NoSQL database (such as MongoDB) would force an awkward modeling decision: either embedding arrays of course subdocuments inside student documents (which causes massive data duplication across students and risks hitting document size limits) or referencing IDs across collections (which requires multiple round-trip application-level joins that lack database-enforced foreign key constraints). Relational SQL engines provide foreign key cascades, unique constraints, and declarative multi-table joins natively at the engine level, making SQL the reliable, maintainable choice for institutional data.
+## Trade-offs
+1. Speed vs freshness: feeds come from the cache, so a new photo may take a few seconds to appear for followers. This is acceptable for a social app and greatly reduces database load.
+2. Simplicity vs speed of upload: thumbnails are made in the background. For a moment the photo has no thumbnail, and the app shows a placeholder, but uploads stay fast even during busy periods.
+3. Cost: CDN and object storage cost money per gigabyte, but they are far cheaper and more reliable than storing and serving hundreds of terabytes from our own servers.
